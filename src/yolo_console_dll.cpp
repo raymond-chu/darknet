@@ -24,17 +24,9 @@
 
 #ifdef OPENCV
 #ifdef ZED_STEREO
-#include <sl/Camera.hpp>
-#if ZED_SDK_MAJOR_VERSION == 2
-#define ZED_STEREO_2_COMPAT_MODE
-#endif
-
-#undef GPU // avoid conflict with sl::MEM::GPU
-
-#ifdef ZED_STEREO_2_COMPAT_MODE
+#include <sl_zed/Camera.hpp>
 #pragma comment(lib, "sl_core64.lib")
 #pragma comment(lib, "sl_input64.lib")
-#endif
 #pragma comment(lib, "sl_zed64.lib")
 
 float getMedian(std::vector<float> &v) {
@@ -101,17 +93,37 @@ std::vector<bbox_t> get_3d_coordinates(std::vector<bbox_t> bbox_vect, cv::Mat xy
 }
 
 cv::Mat slMat2cvMat(sl::Mat &input) {
-    int cv_type = -1; // Mapping between MAT_TYPE and CV_TYPE
-    if(input.getDataType() ==
-#ifdef ZED_STEREO_2_COMPAT_MODE
-        sl::MAT_TYPE_32F_C4
-#else
-        sl::MAT_TYPE::F32_C4
-#endif
-        ) {
+    // Mapping between MAT_TYPE and CV_TYPE
+    int cv_type = -1;
+    switch (input.getDataType()) {
+    case sl::MAT_TYPE_32F_C1:
+        cv_type = CV_32FC1;
+        break;
+    case sl::MAT_TYPE_32F_C2:
+        cv_type = CV_32FC2;
+        break;
+    case sl::MAT_TYPE_32F_C3:
+        cv_type = CV_32FC3;
+        break;
+    case sl::MAT_TYPE_32F_C4:
         cv_type = CV_32FC4;
-    } else cv_type = CV_8UC4; // sl::Mat used are either RGBA images or XYZ (4C) point clouds
-    return cv::Mat(input.getHeight(), input.getWidth(), cv_type, input.getPtr<sl::uchar1>(sl::MEM::CPU));
+        break;
+    case sl::MAT_TYPE_8U_C1:
+        cv_type = CV_8UC1;
+        break;
+    case sl::MAT_TYPE_8U_C2:
+        cv_type = CV_8UC2;
+        break;
+    case sl::MAT_TYPE_8U_C3:
+        cv_type = CV_8UC3;
+        break;
+    case sl::MAT_TYPE_8U_C4:
+        cv_type = CV_8UC4;
+        break;
+    default:
+        break;
+    }
+    return cv::Mat(input.getHeight(), input.getWidth(), cv_type, input.getPtr<sl::uchar1>(sl::MEM_CPU));
 }
 
 cv::Mat zed_capture_rgb(sl::Camera &zed) {
@@ -124,13 +136,7 @@ cv::Mat zed_capture_rgb(sl::Camera &zed) {
 
 cv::Mat zed_capture_3d(sl::Camera &zed) {
     sl::Mat cur_cloud;
-    zed.retrieveMeasure(cur_cloud,
-#ifdef ZED_STEREO_2_COMPAT_MODE
-        sl::MEASURE_XYZ
-#else
-        sl::MEASURE::XYZ
-#endif
-        );
+    zed.retrieveMeasure(cur_cloud, sl::MEASURE_XYZ);
     return slMat2cvMat(cur_cloud).clone();
 }
 
@@ -151,13 +157,11 @@ std::vector<bbox_t> get_3d_coordinates(std::vector<bbox_t> bbox_vect, cv::Mat xy
 #ifndef USE_CMAKE_LIBS
 #pragma comment(lib, "opencv_world" OPENCV_VERSION ".lib")
 #ifdef TRACK_OPTFLOW
-/*
 #pragma comment(lib, "opencv_cudaoptflow" OPENCV_VERSION ".lib")
 #pragma comment(lib, "opencv_cudaimgproc" OPENCV_VERSION ".lib")
 #pragma comment(lib, "opencv_core" OPENCV_VERSION ".lib")
 #pragma comment(lib, "opencv_imgproc" OPENCV_VERSION ".lib")
 #pragma comment(lib, "opencv_highgui" OPENCV_VERSION ".lib")
-*/
 #endif    // TRACK_OPTFLOW
 #endif    // USE_CMAKE_LIBS
 #else     // OpenCV 2.x
@@ -170,6 +174,8 @@ std::vector<bbox_t> get_3d_coordinates(std::vector<bbox_t> bbox_vect, cv::Mat xy
 #endif    // USE_CMAKE_LIBS
 #endif    // CV_VERSION_EPOCH
 
+std::set<int> set_vacant;
+std::set<int> set_occupied;
 
 void draw_boxes(cv::Mat mat_img, std::vector<bbox_t> result_vec, std::vector<std::string> obj_names,
     int current_det_fps = -1, int current_cap_fps = -1)
@@ -181,7 +187,16 @@ void draw_boxes(cv::Mat mat_img, std::vector<bbox_t> result_vec, std::vector<std
         cv::rectangle(mat_img, cv::Rect(i.x, i.y, i.w, i.h), color, 2);
         if (obj_names.size() > i.obj_id) {
             std::string obj_name = obj_names[i.obj_id];
+
+            if (obj_name == "vacant" && set_vacant.count(i.track_id) == 0) {
+                set_vacant.insert(i.track_id);
+            }
+            else if (obj_name == "occupied" && set_occupied.count(i.track_id) == 0) {
+                set_occupied.insert(i.track_id);
+            }
+
             if (i.track_id > 0) obj_name += " - " + std::to_string(i.track_id);
+            obj_name += " - " + std::to_string((int)(i.prob * 100)) + "%";
             cv::Size const text_size = getTextSize(obj_name, cv::FONT_HERSHEY_COMPLEX_SMALL, 1.2, 2, 0);
             int max_width = (text_size.width > i.w + 2) ? text_size.width : (i.w + 2);
             max_width = std::max(max_width, (int)i.w + 2);
@@ -204,8 +219,9 @@ void draw_boxes(cv::Mat mat_img, std::vector<bbox_t> result_vec, std::vector<std
         }
     }
     if (current_det_fps >= 0 && current_cap_fps >= 0) {
-        std::string fps_str = "FPS detection: " + std::to_string(current_det_fps) + "   FPS capture: " + std::to_string(current_cap_fps);
-        putText(mat_img, fps_str, cv::Point2f(10, 20), cv::FONT_HERSHEY_COMPLEX_SMALL, 1.2, cv::Scalar(50, 255, 0), 2);
+        std::string fps_str = "FPS detection: " + std::to_string(current_det_fps);
+        //putText(mat_img, fps_str, cv::Point2f(1600, 20), cv::FONT_HERSHEY_COMPLEX_SMALL, 1.2, cv::Scalar(50, 255, 0), 2);
+        //putText(mat_img, fps_str, cv::Point2f(1000, 20), cv::FONT_HERSHEY_COMPLEX_SMALL, 1.2, cv::Scalar(50, 255, 0), 2);
     }
 }
 #endif    // OPENCV
@@ -265,9 +281,9 @@ public:
 
 int main(int argc, char *argv[])
 {
-    std::string  names_file = "data/coco.names";
-    std::string  cfg_file = "cfg/yolov3.cfg";
-    std::string  weights_file = "yolov3.weights";
+    std::string  names_file = "data/obj.names";
+    std::string  cfg_file = "cfg/yolo-obj.cfg";
+    std::string  weights_file = "yolo-obj_best.weights";
     std::string filename;
 
     if (argc > 4) {    //voc.names yolo-voc.cfg yolo-voc.weights test.mp4
@@ -284,9 +300,9 @@ int main(int argc, char *argv[])
 
     auto obj_names = objects_names_from_file(names_file);
     std::string out_videofile = "result.avi";
-    bool const save_output_videofile = false;   // true - for history
+    bool const save_output_videofile = true;   // true - for history
     bool const send_network = false;        // true - for remote detection
-    bool const use_kalman_filter = false;   // true - for stationary camera
+    bool const use_kalman_filter = true;   // true - for stationary camera
 
     bool detection_sync = true;             // true - for video-file
 #ifdef TRACK_OPTFLOW    // for slow GPU
@@ -325,26 +341,20 @@ int main(int argc, char *argv[])
                 int video_fps = 25;
                 bool use_zed_camera = false;
 
-                track_kalman_t track_kalman;
+                track_kalman_t track_kalman(1000, 3, 400, cv::Size(1920, 1080)); //268 - 720p
+                //track_kalman_t track_kalman(1000, 3, 250, cv::Size(1280, 720)); //268
+                //track_kalman_t track_kalman;
 
 #ifdef ZED_STEREO
                 sl::InitParameters init_params;
                 init_params.depth_minimum_distance = 0.5;
-    #ifdef ZED_STEREO_2_COMPAT_MODE
                 init_params.depth_mode = sl::DEPTH_MODE_ULTRA;
                 init_params.camera_resolution = sl::RESOLUTION_HD720;// sl::RESOLUTION_HD1080, sl::RESOLUTION_HD720
                 init_params.coordinate_units = sl::UNIT_METER;
-                init_params.camera_buffer_count_linux = 2;
-                if (file_ext == "svo") init_params.svo_input_filename.set(filename.c_str());
-    #else
-                init_params.depth_mode = sl::DEPTH_MODE::ULTRA;
-                init_params.camera_resolution = sl::RESOLUTION::HD720;// sl::RESOLUTION::HD1080, sl::RESOLUTION::HD720
-                init_params.coordinate_units = sl::UNIT::METER;
-                if (file_ext == "svo") init_params.input.setFromSVOFile(filename.c_str());
-    #endif
                 //init_params.sdk_cuda_ctx = (CUcontext)detector.get_cuda_context();
                 init_params.sdk_gpu_id = detector.cur_gpu_id;
-
+                init_params.camera_buffer_count_linux = 2;
+                if (file_ext == "svo") init_params.svo_input_filename.set(filename.c_str());
                 if (filename == "zed_camera" || file_ext == "svo") {
                     std::cout << "ZED 3D Camera " << zed.open(init_params) << std::endl;
                     if (!zed.isOpened()) {
@@ -379,7 +389,7 @@ int main(int argc, char *argv[])
 #ifdef CV_VERSION_EPOCH // OpenCV 2.x
                     output_video.open(out_videofile, CV_FOURCC('D', 'I', 'V', 'X'), std::max(35, video_fps), frame_size, true);
 #else
-                    output_video.open(out_videofile, cv::VideoWriter::fourcc('D', 'I', 'V', 'X'), std::max(35, video_fps), frame_size, true);
+                    output_video.open(out_videofile, cv::VideoWriter::fourcc('D', 'I', 'V', 'X'), std::max(1, video_fps), frame_size, true);
 #endif
 
                 struct detection_data_t {
@@ -411,13 +421,7 @@ int main(int argc, char *argv[])
                         detection_data = detection_data_t();
 #ifdef ZED_STEREO
                         if (use_zed_camera) {
-                            while (zed.grab() !=
-        #ifdef ZED_STEREO_2_COMPAT_MODE
-                                sl::SUCCESS
-        #else
-                                sl::ERROR_CODE::SUCCESS
-        #endif
-                                ) std::this_thread::sleep_for(std::chrono::milliseconds(2));
+                            while (zed.grab() != sl::SUCCESS) std::this_thread::sleep_for(std::chrono::milliseconds(2));
                             detection_data.cap_frame = zed_capture_rgb(zed);
                             detection_data.zed_cloud = zed_capture_3d(zed);
                         }
@@ -553,6 +557,8 @@ int main(int argc, char *argv[])
                         //small_preview.set(draw_frame, result_vec);
                         //large_preview.set(draw_frame, result_vec);
                         draw_boxes(draw_frame, result_vec, obj_names, current_fps_det, current_fps_cap);
+                        putText(draw_frame, "Occupied: " + std::to_string(set_occupied.size()) + " Vacant: " + std::to_string(set_vacant.size()), cv::Point2f(30, 1000), cv::FONT_HERSHEY_COMPLEX_SMALL, 2, cv::Scalar(255, 255, 255), 2);
+                        //putText(draw_frame, "Occupied: " + std::to_string(set_occupied.size()) + " Vacant: " + std::to_string(set_vacant.size()), cv::Point2f(30, 650), cv::FONT_HERSHEY_COMPLEX_SMALL, 2, cv::Scalar(255, 255, 255), 2);
                         //show_console_result(result_vec, obj_names, detection_data.frame_id);
                         //large_preview.draw(draw_frame);
                         //small_preview.draw(draw_frame, true);
@@ -627,6 +633,7 @@ int main(int argc, char *argv[])
                     if (key == 'p') while (true) if (cv::waitKey(100) == 'p') break;
                     //if (key == 'e') extrapolate_flag = !extrapolate_flag;
                     if (key == 27) { exit_flag = true;}
+                    if (key == 'r') { set_vacant.clear(); set_occupied.clear(); }
 
                     //std::cout << " current_fps_det = " << current_fps_det << ", current_fps_cap = " << current_fps_cap << std::endl;
                 } while (!detection_data.exit_flag);

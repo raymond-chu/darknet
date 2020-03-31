@@ -42,9 +42,9 @@ altNames = None
 def YOLO():
 
     global metaMain, netMain, altNames
-    configPath = "./cfg/yolov3.cfg"
-    weightPath = "./yolov3.weights"
-    metaPath = "./cfg/coco.data"
+    configPath = "./cfg/yolo-obj.cfg"
+    weightPath = "./yolo-obj_best.weights"
+    metaPath = "./cfg/obj.data"
     if not os.path.exists(configPath):
         raise ValueError("Invalid config path `" +
                          os.path.abspath(configPath)+"`")
@@ -80,7 +80,7 @@ def YOLO():
         except Exception:
             pass
     #cap = cv2.VideoCapture(0)
-    cap = cv2.VideoCapture("test.mp4")
+    cap = cv2.VideoCapture("20200130_154806A_Trim_Trim.mp4")
     cap.set(3, 1280)
     cap.set(4, 720)
     out = cv2.VideoWriter(

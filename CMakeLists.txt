@@ -48,6 +48,8 @@ set(INSTALL_LIB_DIR      "${CMAKE_CURRENT_LIST_DIR}" CACHE PATH "Path where lib 
 set(INSTALL_INCLUDE_DIR  "include/darknet"           CACHE PATH "Path where headers will be installed")
 set(INSTALL_CMAKE_DIR    "share/darknet"             CACHE PATH "Path where cmake configs will be installed")
 
+#set (OpenCV_DIR "C:/Users/capstone/opencv/build")
+
 if(${CMAKE_VERSION} VERSION_LESS "3.9.0")
   message(WARNING "To build with CUDA support you need CMake 3.9.0+")
   set(ENABLE_CUDA "FALSE" CACHE BOOL "Enable CUDA support" FORCE)

@@ -51,9 +51,9 @@ struct bbox_t_container {
 #include <cmath>
 
 #ifdef OPENCV
-#include <opencv2/opencv.hpp>            // C++
-#include <opencv2/highgui/highgui_c.h>   // C
-#include <opencv2/imgproc/imgproc_c.h>   // C
+#include "C:\Users\capstone\darknet\opencv\include\opencv2\opencv.hpp"            // C++
+#include "C:\Users\capstone\darknet\opencv\include\opencv2\highgui\highgui_c.h"   // C
+#include "C:\Users\capstone\darknet\opencv\include\opencv2\imgproc\imgproc_c.h"   // C
 #endif
 
 extern "C" LIB_API int init(const char *configurationFilename, const char *weightsFilename, int gpu);
@@ -905,7 +905,8 @@ public:
 
                 float dist = get_distance(pred_box.x, pred_box.y, find_box.x, find_box.y);
 
-                float movement_dist = std::max(max_dist, static_cast<float>(std::max(pred_box.w, pred_box.h)) );
+                //float movement_dist = std::max(max_dist, static_cast<float>(std::max(pred_box.w, pred_box.h)) );
+				float movement_dist = max_dist;
 
                 if ((dist < movement_dist) && (dist < min_dist)) {
                     min_dist = dist;
