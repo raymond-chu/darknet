@@ -42,6 +42,7 @@ altNames = None
 def YOLO():
 
     global metaMain, netMain, altNames
+    # configuration
     configPath = "./cfg/yolo-obj.cfg"
     weightPath = "./yolo-obj_best.weights"
     metaPath = "./cfg/obj.data"
@@ -79,10 +80,13 @@ def YOLO():
                     pass
         except Exception:
             pass
+    # if using webcam
     #cap = cv2.VideoCapture(0)
+    # if using videofile - change parameter to video file input
     cap = cv2.VideoCapture("20200130_154806A_Trim_Trim.mp4")
-    cap.set(3, 1280)
-    cap.set(4, 720)
+    #change to match resolution of video file
+    cap.set(3, 1920)
+    cap.set(4, 1080)
     out = cv2.VideoWriter(
         "output.avi", cv2.VideoWriter_fourcc(*"MJPG"), 10.0,
         (darknet.network_width(netMain), darknet.network_height(netMain)))
